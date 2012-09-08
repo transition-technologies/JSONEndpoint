@@ -14,3 +14,8 @@ tmp
 test-result
 eclipse
 server.pid
+dist
+/nbproject/private/
+/samples-and-tests/testJSON/nbproject/private/
+/nbproject/
+

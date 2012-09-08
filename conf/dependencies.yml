@@ -1,0 +1,4 @@
+self: play -> JSONEndpoint 0.1
+
+require:
+    - play
