@@ -1,11 +1,8 @@
 package controllers;
 
-import controllers.json.JsonRenderer;
-import controllers.json.JsonRenderer.JsonEndpoint;
-import play.*;
+import pl.com.tt.play.modules.json.JsonRenderer;
+import pl.com.tt.play.modules.json.JsonRenderer.JsonEndpoint;
 import play.mvc.*;
-
-import java.util.*;
 
 import models.*;
 

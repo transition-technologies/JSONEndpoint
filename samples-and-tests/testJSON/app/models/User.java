@@ -6,6 +6,8 @@ package models;
 
 import com.google.gson.annotations.Expose;
 import javax.persistence.Entity;
+
+import pl.com.tt.play.modules.json.JsonRenderer.JsonIgnore;
 import play.db.jpa.Model;
 
 /**
@@ -14,9 +16,8 @@ import play.db.jpa.Model;
  */
 @Entity
 public class User extends Model {
-    @Expose
     public String name;
+    @JsonIgnore
     public String surname;
-    @Expose
     public int age;
 }

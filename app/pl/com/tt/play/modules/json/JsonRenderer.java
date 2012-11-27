@@ -13,19 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package controllers.json;
+package pl.com.tt.play.modules.json;
 
+import com.google.gson.ExclusionStrategy;
+import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 import com.google.gson.annotations.Expose;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.util.Arrays;
+import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import play.Logger;
+import java.util.regex.Pattern;
+
 import play.db.jpa.JPABase;
 import play.exceptions.TemplateNotFoundException;
 import play.mvc.*;
@@ -51,42 +60,41 @@ import play.mvc.*;
  */
 public class JsonRenderer extends Controller {
 
+    @Target({ElementType.FIELD, ElementType.TYPE})
+    @Retention(RetentionPolicy.RUNTIME)
+    public static @interface JsonIgnore {
+    }
+
     @After
     @Catch(TemplateNotFoundException.class)
-    static void rendersAsJson(Throwable result) throws Throwable {
+    static void renderModelsAsJson(Throwable result) throws Throwable {
         JsonEndpoint classAnnotation = getControllerAnnotation(JsonEndpoint.class);
         JsonEndpoint methodAnnotation = getActionAnnotation(JsonEndpoint.class);
 
         boolean process = (methodAnnotation != null || classAnnotation != null) && isJsonRequested(result);
 
         if (process) {
-            Logger.debug("Replacing controller response with JSON");
             Map<String, Object> args = Scope.RenderArgs.current().data;
             Map<String, Object> outputObjects = new HashMap<String, Object>();
             if (methodAnnotation != null && methodAnnotation.output().length > 0) {
                 String[] outputArgs = methodAnnotation.output();
-                // <editor-fold defaultstate="collapsed" desc="Logging">
-                if (Logger.isDebugEnabled()) {
-                    Logger.debug("Return objects are explicitly declared. Will return only: %s", Arrays.toString(outputArgs));
-                }// </editor-fold>
                 for (String argName : outputArgs) {
                     Object object = args.get(argName);
                     outputObjects.put(argName, object);
                 }
             } else {
-                Logger.debug("Return objects not declared. Returning template render args extending JPABase");
                 for (Map.Entry<String, Object> entry : args.entrySet()) {
                     if (entry.getValue() instanceof JPABase) {
                         outputObjects.put(entry.getKey(), entry.getValue());
                     }
                 }
             }
-            Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
-            // <editor-fold defaultstate="collapsed" desc="Logging">
-            if (Logger.isDebugEnabled()) {
-                Logger.debug("Prepared data for output: %s", gson.toJson(gson));
-            }// </editor-fold>
-            renderJSON(gson.toJson(outputObjects));
+            final GsonBuilder gsonBuilder = new GsonBuilder();
+            gsonBuilder.registerTypeHierarchyAdapter(Collection.class, new RunTimeTypeCollectionAdapter());
+            gsonBuilder.setExclusionStrategies(new JsonExclusionStrategy());
+            Gson gson = gsonBuilder.create();
+            String json = gson.toJson(outputObjects);
+            renderJSON(json);
         }
 
         if (result != null) {
@@ -97,8 +105,9 @@ public class JsonRenderer extends Controller {
     @Util
     private static boolean isJsonRequested(Throwable result) {
         Http.Header accepts = request.headers.get("accept");
-        boolean json = accepts != null && "application/json".contains(accepts.value());
-        json = json || result instanceof TemplateNotFoundException && ((TemplateNotFoundException) result).getPath().endsWith(".json");
+        boolean json = accepts != null && "application/json".equalsIgnoreCase(accepts.value());
+        json = json || result instanceof TemplateNotFoundException && ((TemplateNotFoundException) result).getPath().endsWith(
+                ".json");
         return json;
     }
 
@@ -126,5 +135,38 @@ public class JsonRenderer extends Controller {
          * template in annotated controller method.
          */
         public String[] output() default {};
+    }
+
+    private static class RunTimeTypeCollectionAdapter implements JsonSerializer<Collection> {
+
+        public JsonElement serialize(Collection src, Type typeOfSrc,
+                                     JsonSerializationContext context) {
+            if (src == null) {
+                return null;
+            }
+            JsonArray array = new JsonArray();
+            for (Object child : src) {
+                JsonElement element = context.serialize(child);
+                array.add(element);
+            }
+            return array;
+        }
+    }
+
+    private static class JsonExclusionStrategy implements ExclusionStrategy {
+
+        public boolean shouldSkipField(FieldAttributes f) {
+            boolean ignored = f.getAnnotation(JsonIgnore.class) != null;
+            if (!ignored) {
+                String className = f.getDeclaringClass().getName();
+                ignored = JsonEndpointPlugin.CLASS_IGNORE_PATTERN.matcher(className).matches();
+            }
+            return ignored;
+        }
+
+        public boolean shouldSkipClass(Class<?> clazz) {
+            JsonIgnore annotation = clazz.getAnnotation(JsonIgnore.class);
+            return annotation != null || JsonEndpointPlugin.CLASS_IGNORE_PATTERN.matcher(clazz.getName()).matches();
+        }
     }
 }
