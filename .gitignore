@@ -19,3 +19,4 @@ dist
 /samples-and-tests/testJSON/nbproject/private/
 /nbproject/
 target
+lib/play-JSONEndpoint.jar
